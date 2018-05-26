@@ -28,16 +28,16 @@ node('master') {
       sh "bundle install --path vendor/bundle"
 
       stage 'Unit Test'
-      sh "sudo bundle exec fastlane test"
+      sh "bundle exec fastlane test"
 
       if (env.BRANCH_NAME.contains("release")) {
         getBuildNumber()
         stage 'Build'
-        sh "sudo bundle exec fastlane production"
+        sh "bundle exec fastlane production"
       } else if (env.BRANCH_NAME.contains("develop")) {
         getBuildNumber()
         stage 'Build'
-        sh "sudo bundle exec fastlane beta"
+        sh "bundle exec fastlane beta"
       }
     }
   }
