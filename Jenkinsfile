@@ -25,19 +25,19 @@ node('master') {
       stage 'Build'
     } else {
       stage 'Check Gemfile'
-      sh "bundle install"
+      sh "sudo bundle install"
 
       stage 'Unit Test'
-      sh "bundle exec fastlane test"
+      sh "sudo bundle exec fastlane test"
 
       if (env.BRANCH_NAME.contains("release")) {
         getBuildNumber()
         stage 'Build'
-        sh "bundle exec fastlane production"
+        sh "sudo bundle exec fastlane production"
       } else if (env.BRANCH_NAME.contains("develop")) {
         getBuildNumber()
         stage 'Build'
-        sh "bundle exec fastlane beta"
+        sh "sudo bundle exec fastlane beta"
       }
     }
   }
