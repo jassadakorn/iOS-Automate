@@ -1,4 +1,4 @@
-#!/usr/bin/env groovy
+#!groovy
 
 def getBuildNumber() {
   stage 'Get Build Number'
