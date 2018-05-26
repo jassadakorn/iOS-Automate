@@ -25,7 +25,7 @@ node('master') {
       stage 'Build'
     } else {
       stage 'Check Gemfile'
-      sh "sudo bundle install"
+      sh "bundle install --path vendor/bundle"
 
       stage 'Unit Test'
       sh "sudo bundle exec fastlane test"
