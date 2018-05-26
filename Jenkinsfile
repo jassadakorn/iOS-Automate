@@ -14,7 +14,7 @@ node('master') {
   stage 'Checkout'
   dir('app') {
     echo "BranchName: ${env.BRANCH_NAME}"
-    git url: 'your git URL',
+    git url: 'https://github.com/jassadakorn/iOS-Automate.git',
     branch: "${env.BRANCH_NAME}"
     latest_commit = sh(script:'git log -n 1 --pretty="%s"', returnStdout: true)
     echo "latest_commit: ${latest_commit}"
