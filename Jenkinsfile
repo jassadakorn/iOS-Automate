@@ -1,23 +1,46 @@
-node {
-def mvnHome
-stage('Preparation') { // for display purposes
-// Get some code from a GitHub repository
-git 'https://github.com/jglick/simple-maven-project-with-tests.git'
-// Get the Maven tool.
-// ** NOTE: This 'M3' Maven tool must be configured
-// **       in the global configuration.
-mvnHome = tool 'M3'
+#!groovy
+
+def getBuildNumber() {
+  stage 'Get Build Number'
+  def job = build job: 'ios-buildnumber'
+  env.BUILD_ID = job.getNumber()
 }
-stage('Build') {
-// Run the maven build
-if (isUnix()) {
-sh "'${mvnHome}/bin/mvn' -Dmaven.test.failure.ignore clean package"
-} else {
-bat(/"${mvnHome}\bin\mvn" -Dmaven.test.failure.ignore clean package/)
-}
-}
-stage('Results') {
-junit '**/target/surefire-reports/TEST-*.xml'
-archive 'target/*.jar'
-}
+
+node('master') {
+  echo "Starting Pipeline"
+  stage 'Clear WorkSpace'
+  deleteDir()
+
+  stage 'Checkout'
+  dir('app') {
+    echo "BranchName: ${env.BRANCH_NAME}"
+    git url: 'https://github.com/jassadakorn/iOS-Automate.git',
+    branch: "${env.BRANCH_NAME}"
+    latest_commit = sh(script:'git log -n 1 --pretty="%s"', returnStdout: true)
+    echo "latest_commit: ${latest_commit}"
+    if(latest_commit.contains("[ci-skip]")){
+      echo "skip"
+      stage 'Check Gemfile'
+      stage 'Unit Test'
+      stage 'Build'
+    } else {
+      stage 'Check Gemfile'
+      sh "bundle install --path vendor/bundle"
+
+      stage 'Unit Test'
+      sh "bundle exec fastlane test"
+
+      if (env.BRANCH_NAME.contains("release")) {
+        getBuildNumber()
+        stage 'Build'
+        sh "bundle exec fastlane production"
+      } else if (env.BRANCH_NAME.contains("develop")) {
+        getBuildNumber()
+        stage 'Build'
+        sh "bundle exec fastlane beta"
+      }
+    }
+  }
+  stage 'Clear WorkSpace After Success'
+  deleteDir()
 }
