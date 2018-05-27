@@ -11,60 +11,155 @@
 
 # This is the minimum version number required.
 # Update this, if you use features of a newer version
-fastlane_version "1.104.0"
+fastlane_version "1.101.0"
 
 default_platform :ios
 
 platform :ios do
   before_all do
     # ENV["SLACK_URL"] = "https://hooks.slack.com/services/..."
-    cocoapods
-    
+    ENV["CRASHLYTICS_API_TOKEN"] = ""
+    ENV["CRASHLYTICS_BUILD_SECRET"] = ""
+  end
+
+  desc "Local setup required to work with the iOS project"
+  lane :setup do
+    install_xcode_plugin(github: 'https://github.com/neonichu/FixCode')
+    fetch_certificates_dev
+  end
+
+  desc "Increment the app version patch"
+  lane :bumpPatch do
+    increment_version_number(bump_type: "patch")
+  end
+
+  desc "Increment the app version minor"
+  lane :bumpMinor do
+    increment_version_number(bump_type: "minor")
+  end
+
+  desc "Increment the app version major"
+  lane :bumpMajor do
+    increment_version_number(bump_type: "major")
+  end
+
+  desc "Fetches the development certificates and provisioning profiles to run the project on real devices"
+  lane :fetch_certificates_dev do
+    match(type: "development", readonly: true)
+  end
+
+  desc "Fetches the adhoc certificates and provisioning profiles compile the app for Crashlytics"
+  lane :fetch_certificates_beta do
+    match(type: "adhoc", readonly: true)
+  end
+
+  desc "Fetches the distribution certificates and provisioning profiles compile the app for AppStore distribution"
+  lane :fetch_certificates_appstore do
+    match(type: "appstore", readonly: true)
   end
 
   desc "Runs all the tests"
   lane :test do
-    scan
+  	cocoapods
+    xcversion(version: "8")
+    ENV['FASTLANE_EXPLICIT_OPEN_SIMULATOR'] = "2"
+    scan(workspace: "BuildConfigurations.xcworkspace",
+    	scheme: "BuildConfigurations_dev",
+    	devices: ["iPhone 6s"],
+    	clean: true,
+    	skip_build: false,
+    	use_clang_report_name: true)
   end
 
-  desc "Submit a new Beta Build to Apple TestFlight"
-  desc "This will also make sure the profile is up to date"
-  lane :beta do
-    # match(type: "appstore") # more information: https://codesigning.guide
-    gym # Build your app - more options available
-    pilot
+  desc "- Ensures a clean git status"
+  desc "- Increment the build number"
+  desc "- Build and sign the app"
+  lane :build do |options|
+    ensure_git_status_clean
+    build_number = ENV['BUILD_ID']
+    increment_build_number(build_number: build_number)
+    gym(scheme: options[:scheme],
+    toolchain: "com.apple.dt.toolchain.Swift_2_3",
+    use_legacy_build_api: false)
+  end
 
-    # sh "your_script.sh"
-    # You can also use other beta testing services here (run `fastlane actions`)
+  desc "Submit a new Beta Build to Crashlytics"
+  desc "This action does the following:"
+  desc ""
+  desc "- Build"
+  desc "- Upload the ipa file to Crashlytics"
+  desc "- Commit and push the version bump"
+  lane :beta do
+    fetch_certificates_beta
+    cocoapods
+    build(scheme: "BuildConfigurations_beta")
+    deploy_beta
+    commit_build_number()
   end
 
   desc "Deploy a new version to the App Store"
-  lane :release do
-    # match(type: "appstore")
-    # snapshot
-    gym # Build your app - more options available
+  desc "This action does the following:"
+  desc ""
+  desc "- Build"
+  desc "- Upload the ipa file to Crashlytics"
+  desc "- Commit and push the version bump"
+  lane :production do
+    fetch_certificates_appstore
+    cocoapods
+    build(scheme: "BuildConfigurations_prod")
+    deploy_release
+    commit_build_number()
+  end
+
+  lane :deploy_beta do
+    version_number = get_version_number
+    change_log = File.read("./changelog/#{version_number}.txt")
+    crashlytics(
+    api_token: ENV["CRASHLYTICS_API_TOKEN"],
+    build_secret: ENV["CRASHLYTICS_BUILD_SECRET"],
+    groups: ["groupName"],
+    notes: change_log
+    )
+  end
+
+  lane :deploy_release do
     deliver(force: true)
-    # frameit
-  end
-
-  # You can define as many lanes as you want
-
-  after_all do |lane|
-    # This block is called, only if the executed lane was successful
-
-    # slack(
-    #   message: "Successfully deployed new App Update."
-    # )
-  end
-
-  error do |lane, exception|
-    # slack(
-    #   message: exception.message,
-    #   success: false
-    # )
   end
 end
 
+after_all do |lane|
+  # slack(
+  #   message: "Successfully deployed new App Update."
+  # )
+  clear_derived_data
+end
+
+error do |lane, exception|
+  # slack(
+  #   message: exception.message,
+  #   success: false
+  # )
+end
+
+def commit_build_number()
+  clean_build_artifacts
+  build_number = ENV['BUILD_ID']
+  version_number = get_version_number
+  complete_version_number = version_string(version_number, build_number)
+  commit_version_bump(message: "[ci skip][ci-skip] Deploying version: #{complete_version_number}")
+  add_git_tag
+  push_to_git_remote(
+  remote: 'origin',         # optional, default: 'origin'
+  local_branch: ENV['BRANCH_NAME'],  # optional, aliased by 'branch', default: 'master'
+  remote_branch: ENV['BRANCH_NAME'], # optional, default is set to local_branch
+  force: true,              # optional, default: false
+  tags: true               # optional, default: true
+  )
+end
+
+def version_string(version_number, build_number)
+  "#{version_number} (#{build_number})"
+end
 
 # More information about multiple platforms in fastlane: https://github.com/fastlane/fastlane/blob/master/fastlane/docs/Platforms.md
 # All available actions: https://github.com/fastlane/fastlane/blob/master/fastlane/docs/Actions.md
